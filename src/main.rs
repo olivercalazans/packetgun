@@ -15,13 +15,20 @@
  * along with this program.  If not, see <https://www.gnu.org>.
  */
 
-use std::{env, mem};
-use crate::{abort, Packet, Iface, RandomValues, SysInfo, CtrlCHandler, Layer2Socket};
+
+use std::net::Ipv4Addr;
+use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+mod modules;
+use modules::*;
 
 
 
 fn main() {
-    let mut pkt_gun = PacketGun::new();
+    let args        = Args::parse();
+    let mut pkt_gun = PacketGun::new(&args);
     pkt_gun.execute();
 }
 
@@ -46,15 +53,15 @@ pub struct PacketGun {
 
 impl PacketGun {
 
-    pub fn new(args: Args) -> Self {
-        let protocol = Self::validate_protocol(&args)
+    pub fn new(args: &Args) -> Self {
+        let protocol = Self::validate_protocol(&args);
         let iface    = SysInfo::iface_from_ip(args.dst_ip);
         let cidr     = iface.cidr().unwrap_or_else(|e| abort(e));
         
         let (first_ip, last_ip) = get_first_and_last_ip(&cidr);
 
         Self {
-            builder   : Packet::new(),
+            builder   : Packet::new(protocol),
             rand      : RandomValues::new(first_ip, last_ip),
             pkts_sent : 0,
             src_ip    : args.src_ip,
@@ -70,13 +77,13 @@ impl PacketGun {
 
 
 
-    fn validate_protocol(args: &Args) -> u16 {
+    fn validate_protocol(args: &Args) -> u8 {
         if !args.icmp && !args.tcp {
             abort("It is necessary to select one protocol")
         }
 
-        if args.icmp { return 1; }
-        if args.tcp  { return 6; }
+        if args.icmp { return 1 }
+        if args.tcp  { return 6 }
     }
 
     
@@ -142,7 +149,7 @@ impl PacketGun {
 
     #[inline]
     fn get_icmp_pkt(&mut self) -> &[u8] {
-        self.builder.l2_pkt(
+        self.builder.icmp_pkt(
             self.src_mac.unwrap_or_else(|| self.rand.random_mac()),
             self.src_ip.unwrap_or_else( || self.rand.random_ip()),
             self.dst_mac,
@@ -154,7 +161,7 @@ impl PacketGun {
 
     #[inline]
     fn get_tcp_pkt(&mut self) -> &[u8] {
-        self.builder.l2_pkt(
+        self.builder.tcp_pkt(
             self.src_mac.unwrap_or_else(|| self.rand.random_mac()), 
             self.src_ip.unwrap_or_else( || self.rand.random_ip()), 
             self.rand.random_port(),
