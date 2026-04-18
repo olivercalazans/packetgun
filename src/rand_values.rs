@@ -17,7 +17,7 @@
 
 use std::net::Ipv4Addr;
 use rand::{Rng, rngs::ThreadRng, prelude::SliceRandom};
-use crate::utils::{Mac, Bssid};
+use crate::Mac;
 
 
 

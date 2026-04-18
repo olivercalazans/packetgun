@@ -1,7 +1,23 @@
+/*
+ * Copyright (C) 2026 Oliver R. Calazans Jeronimo
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 use std::{ net::Ipv4Addr, ffi::CStr, fs , path::Path, str::FromStr, fmt};
 use libc::{ freeifaddrs, AF_INET, sockaddr_in };
-use crate::iface::SysInfo;
-use crate::utils::{abort, Mac};
+use crate::{SysInfo, abort, Mac};
 
 
 
@@ -48,13 +64,6 @@ impl Iface {
     pub fn mac(&self) -> Result<Mac, String> {
         let mac = SysInfo::get_info(&self.iface, "address")?;
         Mac::from_str(&mac)
-    }
-
-
-
-    pub fn state(&self) -> Result<String, String> {
-        let state = SysInfo::get_info(&self.iface, "operstate")?;
-        Ok(state.to_uppercase())
     }
 
 
@@ -194,28 +203,6 @@ impl Iface {
         }
 
         Err(format!("No MAC address found on interface {}", &self.iface))
-    }
-
-
-
-    pub fn broadcast_ip(&self) -> Result<Ipv4Addr, String> {
-        let (ip, prefix) = self.ipaddr_and_u8()?;
-        let ip_u32       = u32::from(ip);
-        
-        let mask = if prefix == 0 { 0 } else { (!0u32) << (32 - prefix) };
-        let broadcast_u32 = ip_u32 | !mask;
-        
-        Ok(Ipv4Addr::from(broadcast_u32))
-    }
-
-    
-    
-    fn ipaddr_and_u8(&self) -> Result<(Ipv4Addr, u8), String> {
-        let cidr             = self.cidr()?;
-        let parts: Vec<&str> = cidr.split('/').collect();
-        let ip: Ipv4Addr     = parts[0].parse().unwrap();
-        let prefix: u8       = parts[1].parse().unwrap();
-        Ok((ip, prefix))
     }
 
 }

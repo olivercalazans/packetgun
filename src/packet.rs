@@ -16,7 +16,7 @@
  */
 
 use std::net::Ipv4Addr;
-use crate::utils::{Mac, abort};
+use crate::{Mac, abort};
 
 
 
