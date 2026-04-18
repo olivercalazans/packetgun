@@ -15,8 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org>.
  */
 
-use std::{ net::Ipv4Addr, ffi::CStr, fs , str::FromStr, fmt};
-use libc::{ freeifaddrs, AF_INET, sockaddr_in };
+use std::{net::Ipv4Addr, ffi::CStr, fs , str::FromStr, fmt};
+use libc::{freeifaddrs, AF_INET, sockaddr_in};
 use crate::{SysInfo, abort, Mac};
 
 
@@ -62,40 +62,13 @@ impl Iface {
 
 
     pub fn mac(&self) -> Result<Mac, String> {
-        let mac = SysInfo::get_info(&self.iface, "address")?;
+        let file_path = format!("/sys/class/net/{}/address", self.iface);
+        
+        let mac = fs::read_to_string(&file_path)
+            .map(|content| content.trim().to_string())
+            .map_err(|e| format!("Failed to read {}: {}", file_path, e))?;
+
         Mac::from_str(&mac)
-    }
-
-
-
-    pub fn ip(&self) -> Result<Ipv4Addr, String> {
-        unsafe {
-            let ifap    = SysInfo::ifaddrs_ptr();
-            let mut cur = ifap;
-
-            while !cur.is_null() {
-                let ifa       = &*cur;
-                let name_cstr = CStr::from_ptr(ifa.ifa_name);
-                let name      = name_cstr.to_string_lossy();
-
-                if name != self.iface
-                   || ifa.ifa_addr.is_null()
-                   || (*ifa.ifa_addr).sa_family as i32 != AF_INET 
-                {
-                    cur = ifa.ifa_next;
-                    continue;
-                }
-
-                let addr = &*(ifa.ifa_addr as *const sockaddr_in);
-                let ip   = Ipv4Addr::from(addr.sin_addr.s_addr.to_ne_bytes());
-                freeifaddrs(ifap);
-
-                return Ok(ip);
-            }
-
-            freeifaddrs(ifap);
-            Err(format!("Interface {} not found or has no IPv4 address", &self.iface))
-        }
     }
 
 
@@ -139,46 +112,6 @@ impl Iface {
             freeifaddrs(ifap);
             Err(format!("Interface {} not found or missing IPv4/netmask", &self.iface))
         }
-    }
-
-
-
-    pub fn gateway_ip(&self) -> Result<Ipv4Addr, String> {
-        let content = fs::read_to_string("/proc/net/route")
-            .map_err(|e| format!("Uneable to read /proc/net/route: {}", e))?;
-        
-        for line in content.lines().skip(1) {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-
-            if parts.len() < 8 || parts[0] != &self.iface {
-                continue;
-            }
-
-            let gateway_hex = parts[2];
-            if gateway_hex == "00000000" {
-                continue;
-            }
-
-            if let Some(gateway) = Self::hex_to_ip(gateway_hex) {
-                return Ok(gateway);
-            }
-        }
-
-        Err("Gateway IP not found".to_string())
-    }
-
-
-
-    fn hex_to_ip(hex: &str) -> Option<Ipv4Addr> {
-        if hex.len() != 8 {
-            return None;
-        }
-
-        let bytes: Vec<u8> = (0..4)
-            .map(|i| u8::from_str_radix(&hex[i*2..i*2+2], 16).ok())
-            .collect::<Option<Vec<_>>>()?;
-
-        Some(Ipv4Addr::new(bytes[3], bytes[2], bytes[1], bytes[0]))
     }
 
 

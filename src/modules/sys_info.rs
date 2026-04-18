@@ -48,16 +48,6 @@ impl SysInfo {
 
 
 
-    pub fn get_info(iface: &str, info_type: &str) -> Result<String, String> {
-        let file_path = format!("/sys/class/net/{}/{}", iface, info_type);
-        
-        fs::read_to_string(&file_path)
-            .map(|content| content.trim().to_string())
-            .map_err(|e| format!("Failed to read {}: {}", file_path, e))
-    }
-
-
-
     pub fn exists(iface_name: &str) -> Result<String, String> {
         let interfaces = Self::ifaces();
     
@@ -132,12 +122,6 @@ impl SysInfo {
             std::net::IpAddr::V4(v4) => v4,
             _ => abort("Expected a local IPv4 address, but got IPv6"),
         }
-    }
-
-
-
-    pub fn default_iface() -> Iface {
-        Self::iface_from_ip(Ipv4Addr::new(8, 8, 8, 8))
     }
 
 }

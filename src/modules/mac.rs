@@ -51,12 +51,6 @@ impl Mac {
 
 
 
-    pub fn from_slice(slice: &[u8]) -> Self {
-        Self::new(slice.try_into().unwrap())
-    }
-
-
-
     pub fn bytes(&self) -> &[u8; 6] {
         &self.bytes
     }

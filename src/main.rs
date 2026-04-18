@@ -20,6 +20,7 @@ use std::net::Ipv4Addr;
 use std::time::Instant;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use clap::Parser;
 
 mod modules;
 use modules::*;
@@ -65,9 +66,9 @@ impl PacketGun {
             rand      : RandomValues::new(first_ip, last_ip),
             pkts_sent : 0,
             src_ip    : args.src_ip,
-            src_mac   : resolve_mac(args.src_mac, &iface),
+            src_mac   : resolve_mac(args.src_mac.clone(), &iface),
             dst_ip    : args.dst_ip,
-            dst_mac   : resolve_mac(Some(args.dst_mac), &iface).unwrap(),
+            dst_mac   : resolve_mac(Some(args.dst_mac.clone()), &iface).unwrap(),
             dst_port  : args.port,
             duration  : 0.0,
             protocol,
@@ -82,8 +83,11 @@ impl PacketGun {
             abort("It is necessary to select one protocol")
         }
 
-        if args.icmp { return 1 }
-        if args.tcp  { return 6 }
+        if args.icmp { 
+            return 1 
+        } else {
+            return 6 
+        }
     }
 
     
