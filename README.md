@@ -27,7 +27,7 @@
 > 2. Comply with **all applicable laws**
 > 3. Assume **full liability** for misuse
 > 
-> **The Developer assumes NO liability. See [DISCLAIMER.md](DISCLAIMER.md) for full policy.**
+> **The Developer assumes NO liability. See [DISCLAIMER.md](DISCLAIMER.md).**
 
 
 <br>
