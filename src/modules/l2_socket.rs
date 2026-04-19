@@ -15,156 +15,80 @@
  * along with this program.  If not, see <https://www.gnu.org>.
  */
 
-use std::mem;
-use std::io;
-use libc::{
-    socket, sendto, close, sockaddr_ll, htons, 
-    AF_PACKET, SOCK_RAW, ETH_P_ALL, SOL_SOCKET, SO_BINDTODEVICE
+
+use std::num::NonZeroU32;
+use std::ptr;
+use xsk_rs::{
+    config::{UmemConfig, SocketConfig, Interface, BindFlags, XdpFlags},
+    umem::frame::FrameDesc,
+    Socket, Umem,
 };
-use crate::Iface;
-use crate::abort;
+use crate::{Iface, abort};
 
 
 
 pub struct Layer2Socket {
-    file_desc : i32,
-    addr      : sockaddr_ll,
+    tx_q  : xsk_rs::TxQueue,
+    _umem : Umem,
+    descs : Vec<FrameDesc>,
 }
 
 
 impl Layer2Socket {
-
     pub fn new(iface: &Iface) -> Self {
-        let file_desc = Self::create_socket(iface);
-        let addr      = Self::build_sockaddr(iface);
+        let frame_count = 4096;
+        let umem_config = UmemConfig::default();
+        
+        let (umem, descs) = Umem::new(
+                umem_config,
+                NonZeroU32::new(frame_count).unwrap(),
+                false,
+            ).unwrap_or_else(|e| abort(&format!("UMEM Error: {}", e)));
 
-        Self { file_desc, addr }
-    }
+        let name: Interface = iface.name().parse()
+            .unwrap_or_else(|_| abort(&format!("Invalid Interface: {}", iface.name())));
 
+        let socket_config = SocketConfig::builder()
+            .bind_flags(BindFlags::XDP_COPY | BindFlags::XDP_USE_NEED_WAKEUP)
+            .xdp_flags(XdpFlags::XDP_FLAGS_SKB_MODE) 
+            .build();
 
+        let (tx_q, _rx_q, _fq_cq) = unsafe {
+            Socket::new(
+                socket_config,
+                &umem,
+                &name,
+                0,
+            ).unwrap_or_else(|e| abort(&format!("Socket Error: {}", e)))
+        };
 
-    fn create_socket(iface: &Iface) -> i32 {
-        unsafe {
-            let file_desc = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL as u16) as i32);
-            if file_desc < 0 {
-                abort(&format!(
-                    "Failed to create RAW layer 2 socket: {}",
-                    io::Error::last_os_error()
-                ));
-            }
-
-            if let Err(e) = Self::bind_to_interface(file_desc, iface) {
-                let _ = close(file_desc);
-                abort(&format!("Failed to bind socket to interface: {}", e));
-            }
-
-            if let Err(e) = Self::configure_socket(file_desc) {
-                let _ = close(file_desc);
-                abort(&format!("Failed to configure socket: {}", e));
-            }
-
-            file_desc
-        }
-    }
-
-
-
-    fn bind_to_interface(file_desc: i32, iface: &Iface) -> io::Result<()> {
-        unsafe {
-            let ifname_bytes           = iface.name().as_bytes();
-            let mut ifreq: libc::ifreq = mem::zeroed();
-            
-            for (i, &byte) in ifname_bytes.iter().enumerate() {
-                if i < ifreq.ifr_name.len() {
-                    ifreq.ifr_name[i] = byte as libc::c_char;
-                }
-            }
-
-            if libc::setsockopt(
-                file_desc,
-                SOL_SOCKET,
-                SO_BINDTODEVICE,
-                &ifreq as *const _ as *const libc::c_void,
-                mem::size_of::<libc::ifreq>() as libc::socklen_t,
-            ) < 0
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(())
-        }
-    }
-
-
-
-    fn configure_socket(file_desc: i32) -> io::Result<()> {
-        unsafe {
-            let buffer_size: i32 = 1024 * 1024; // 1MB
-            if libc::setsockopt(
-                file_desc,
-                SOL_SOCKET,
-                libc::SO_SNDBUF,
-                &buffer_size as *const _ as *const libc::c_void,
-                mem::size_of::<i32>() as libc::socklen_t,
-            ) < 0
-            {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(())
-        }
-    }
-
-
-
-    fn build_sockaddr(iface: &Iface) -> sockaddr_ll {
-        unsafe {
-            let mut addr: sockaddr_ll = mem::zeroed();
-            addr.sll_family   = AF_PACKET as u16;
-            addr.sll_protocol = htons(ETH_P_ALL as u16);
-            addr.sll_ifindex  = iface.index();
-            addr.sll_halen    = 6;
-            addr
-        }
+        Self { tx_q, _umem: umem, descs }
     }
 
 
 
     #[inline]
-    pub fn send(&self, frame: &[u8]) {
-        unsafe {
-            let ret = sendto(
-                self.file_desc,
-                frame.as_ptr() as *const libc::c_void,
-                frame.len(),
-                0,
-                &self.addr as *const _ as *const libc::sockaddr,
-                mem::size_of::<sockaddr_ll>() as libc::socklen_t,
-            );
+    pub fn send(&mut self, frame: &[u8]) {
+        let len = frame.len();
 
-            if ret < 0 {
-                abort(&format!("Failed to send frame: {}", io::Error::last_os_error()));
-            }
-        }
-    }
-
-
-
-    pub fn close(&mut self) {
-        if self.file_desc >= 0 {
+        if let Some(mut desc) = self.descs.pop() {
             unsafe {
-                let _ = close(self.file_desc);
-                self.file_desc = -1;
+                let mut data_mut = self._umem.data_mut(&mut desc);
+                
+                ptr::copy_nonoverlapping(
+                    frame.as_ptr(),
+                    data_mut.as_mut_ptr(),
+                    len,
+                );
+
+                let slice = [desc];
+
+                if self.tx_q.produce(&slice) > 0 {
+                    let _ = self.tx_q.wakeup();
+                }
             }
+
+            self.descs.push(desc);
         }
-    }
-
-}
-
-
-
-impl Drop for Layer2Socket {
-    fn drop(&mut self) {
-        self.close();
     }
 }

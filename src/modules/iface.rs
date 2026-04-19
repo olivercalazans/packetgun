@@ -38,23 +38,6 @@ impl Iface {
 
 
 
-    pub fn index(&self) -> i32 {
-        let ifindex_path = format!("/sys/class/net/{}/ifindex", &self.iface);
-        
-        match fs::read_to_string(&ifindex_path) {
-            Ok(content) => {
-                content.trim().parse().unwrap_or_else(|_| {
-                    abort(&format!("Failed to parse ifindex for interface: {}", &self.iface));
-                })
-            }
-            Err(_) => {
-                abort(&format!("Uneable to read {}", ifindex_path));
-            }
-        }
-    }
-
-
-
     pub fn name(&self) -> &str {
         &self.iface
     }

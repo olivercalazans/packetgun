@@ -118,7 +118,7 @@ impl PacketGun {
 
 
     fn send_endlessly(&mut self) {
-        let socket        = Layer2Socket::new(&self.iface);
+        let mut socket    = Layer2Socket::new(&self.iface);
         let mut pkts_sent = 0usize;
 
         println!("[+] Sending packets. Press CTRL + C to stop");
@@ -129,7 +129,7 @@ impl PacketGun {
             socket.send(pkt);
             pkts_sent += 1;
 
-            if pkts_sent % 10_000 == 0 {
+            if pkts_sent % 100_000 == 0 {
                 let duration = init.elapsed().as_secs_f64();
                 println!("[%] {} packets sent in {:.2} seconds", pkts_sent, duration);    
             }
