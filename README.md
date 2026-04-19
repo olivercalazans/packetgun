@@ -6,7 +6,7 @@
 
 ## Requirements
 
-- Rust (latest stable). [official Rust installation page](https://www.rust-lang.org/tools/install)
+- Rust (latest stable). [Official Rust installation page](https://www.rust-lang.org/tools/install)
 - Linux OS
 - Root/Administrator privileges (required for raw socket access)
 
@@ -27,7 +27,7 @@
 > 2. Comply with **all applicable laws**
 > 3. Assume **full liability** for misuse
 > 
-> **The Developer assumes NO liability. See [LEGAL.md](LEGAL.md) for full policy.**
+> **The Developer assumes NO liability. See [DISCLAIMER.md](DISCLAIMER.md) for full policy.**
 
 
 <br>
