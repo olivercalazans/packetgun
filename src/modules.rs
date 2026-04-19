@@ -22,9 +22,6 @@ pub use abort::abort;
 mod arg_parser;
 pub use arg_parser::Args;
 
-mod ctrl_c_handler;
-pub use ctrl_c_handler::CtrlCHandler;
-
 mod first_and_last_ip;
 pub use first_and_last_ip::get_first_and_last_ip;
 

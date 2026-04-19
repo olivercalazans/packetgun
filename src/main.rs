@@ -18,8 +18,6 @@
 
 use std::net::Ipv4Addr;
 use std::time::Instant;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use clap::Parser;
 
 mod modules;
@@ -36,17 +34,15 @@ fn main() {
 
 
 pub struct PacketGun {
-    builder   : Packet,
-    iface     : Iface,
-    pkts_sent : usize,
-    rand      : RandomValues,
-    protocol  : u8,
-    src_ip    : Option<Ipv4Addr>,
-    src_mac   : Option<Mac>,
-    dst_ip    : Ipv4Addr,
-    dst_mac   : Mac,
-    dst_port  : u16,
-    duration  : f64,
+    builder  : Packet,
+    iface    : Iface,
+    rand     : RandomValues,
+    protocol : u8,
+    src_ip   : Option<Ipv4Addr>,
+    src_mac  : Option<Mac>,
+    dst_ip   : Ipv4Addr,
+    dst_mac  : Mac,
+    dst_port : u16,
 }
 
 
@@ -55,22 +51,20 @@ pub struct PacketGun {
 impl PacketGun {
 
     pub fn new(args: &Args) -> Self {
-        let protocol = Self::validate_protocol(&args);
-        let iface    = SysInfo::iface_from_ip(args.dst_ip);
-        let cidr     = iface.cidr().unwrap_or_else(|e| abort(e));
+        let iface = SysInfo::iface_from_ip(args.dst_ip);
+        let cidr  = iface.cidr().unwrap_or_else(|e| abort(e));
         
-        let (first_ip, last_ip) = get_first_and_last_ip(&cidr);
+        let (protocol, dst_port) = Self::validate_protocol(&args);
+        let (first_ip, last_ip)  = get_first_and_last_ip(&cidr);
 
         Self {
             builder   : Packet::new(protocol),
             rand      : RandomValues::new(first_ip, last_ip),
-            pkts_sent : 0,
             src_ip    : args.src_ip,
             src_mac   : resolve_mac(args.src_mac.clone(), &iface),
             dst_ip    : args.dst_ip,
             dst_mac   : resolve_mac(Some(args.dst_mac.clone()), &iface).unwrap(),
-            dst_port  : args.port,
-            duration  : 0.0,
+            dst_port,
             protocol,
             iface,
         }
@@ -78,16 +72,20 @@ impl PacketGun {
 
 
 
-    fn validate_protocol(args: &Args) -> u8 {
-        if !args.icmp && !args.tcp {
-            abort("It is necessary to select one protocol")
-        }
-
-        if args.icmp { 
-            return 1 
+    fn validate_protocol(args: &Args) -> (u8, u16) {
+        let proto = if args.proto != 1 && args.proto != 6 {
+            abort("It is necessary to select a protocol. 1 for ICMP or 6 for TCP");
         } else {
-            return 6 
-        }
+            args.proto
+        };
+
+        let dst_port = if proto == 6 && args.dst_port == 0 {
+            abort("A port must be set to use TCP packets. 0 is reserved");
+        } else { 
+            args.dst_port
+        };
+
+        (proto, dst_port)
     }
 
     
@@ -95,7 +93,6 @@ impl PacketGun {
     pub fn execute(&mut self){
         self.display_info();
         self.send_endlessly();
-        self.display_exec_info();
     }
 
 
@@ -121,21 +118,23 @@ impl PacketGun {
 
 
     fn send_endlessly(&mut self) {
-        let socket  = Layer2Socket::new(&self.iface);
-        let running = Arc::new(AtomicBool::new(true));
-        CtrlCHandler::setup(running.clone());
+        let socket        = Layer2Socket::new(&self.iface);
+        let mut pkts_sent = 0usize;
 
         println!("[+] Sending packets. Press CTRL + C to stop");
         let init = Instant::now();
 
-        while running.load(Ordering::SeqCst) {
+        loop {
             let pkt = self.get_packet();
             socket.send(pkt);
-            self.pkts_sent += 1;
-        }
+            pkts_sent += 1;
 
-        println!("\n[-] Flood interrupted");
-        self.duration = init.elapsed().as_secs_f64();
+            if pkts_sent % 10_000 == 0 {
+                let duration = init.elapsed().as_secs_f64();
+                println!("[%] {} packets sent in {:.2} seconds", pkts_sent, duration);    
+            }
+        }
+        
     }
 
 
@@ -173,17 +172,6 @@ impl PacketGun {
             self.dst_ip,
             self.dst_port,
         )
-    }
-
-
-
-    fn display_exec_info(&self) {
-        println!("[%] {} packets sent in {:.2} seconds", &self.pkts_sent, self.duration);
-
-        if self.duration > 1.0 {
-            let rate = self.pkts_sent as f64 / self.duration;
-            println!("[%] {:.2} packets sent per second", rate);
-        };        
     }
 
 }

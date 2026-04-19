@@ -24,14 +24,9 @@ use clap::Parser;
 #[command(name = "pgun", about = "Packet Gun")]
 pub struct Args {
 
-    /// Use ICMP (Ping) packets
-    #[arg(long = "icmp")]
-    pub icmp: bool,
-
-    
-    /// Use TCP SYN packets
-    #[arg(long = "tcp")]
-    pub tcp: bool,
+    /// Protocol to be used (1 = ICMP, 6 = TCP)
+    #[arg(long = "proto")]
+    pub proto: u8,
 
 
     /// Target IP address to flood
@@ -45,8 +40,8 @@ pub struct Args {
 
 
     /// Target port
-    #[arg(short, long, default_value_t = 0)]
-    pub port: u16,
+    #[arg(long = "dport", default_value_t = 0)]
+    pub dst_port: u16,
 
 
     /// Optional source IP address
