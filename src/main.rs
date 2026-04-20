@@ -18,6 +18,8 @@
 
 use std::net::Ipv4Addr;
 use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use clap::Parser;
 
 mod modules;
@@ -43,6 +45,8 @@ pub struct PacketGun {
     dst_ip   : Ipv4Addr,
     dst_mac  : Mac,
     dst_port : u16,
+    duration : f64,
+    pkt_sent : usize,
 }
 
 
@@ -58,12 +62,14 @@ impl PacketGun {
         let (first_ip, last_ip)  = get_first_and_last_ip(&cidr);
 
         Self {
-            builder   : Packet::new(protocol),
-            rand      : RandomValues::new(first_ip, last_ip),
-            src_ip    : args.src_ip,
-            src_mac   : resolve_mac(args.src_mac.clone(), &iface),
-            dst_ip    : args.dst_ip,
-            dst_mac   : resolve_mac(Some(args.dst_mac.clone()), &iface).unwrap(),
+            pkt_sent : 0,
+            duration : 0.0,
+            builder  : Packet::new(protocol),
+            rand     : RandomValues::new(first_ip, last_ip),
+            src_ip   : args.src_ip,
+            src_mac  : resolve_mac(args.src_mac.clone(), &iface),
+            dst_ip   : args.dst_ip,
+            dst_mac  : resolve_mac(Some(args.dst_mac.clone()), &iface).unwrap(),
             dst_port,
             protocol,
             iface,
@@ -93,6 +99,7 @@ impl PacketGun {
     pub fn execute(&mut self){
         self.display_info();
         self.send_endlessly();
+        self.display_exec_info();
     }
 
 
@@ -118,23 +125,26 @@ impl PacketGun {
 
 
     fn send_endlessly(&mut self) {
-        let mut socket    = Layer2Socket::new(&self.iface);
-        let mut pkts_sent = 0usize;
+        let mut socket = Layer2Socket::new(&self.iface);
+
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+
+        ctrlc::set_handler(move || {
+            println!("\n[-] Flood interrupted");
+            r.store(false, Ordering::SeqCst);
+        }).expect("Error configuring Ctrl+C handler");
 
         println!("[+] Sending packets. Press CTRL + C to stop");
         let init = Instant::now();
 
-        loop {
+        while running.load(Ordering::SeqCst) {
             let pkt = self.get_packet();
             socket.send(pkt);
-            pkts_sent += 1;
-
-            if pkts_sent % 100_000 == 0 {
-                let duration = init.elapsed().as_secs_f64();
-                println!("[%] {} packets sent in {:.2} seconds", pkts_sent, duration);    
-            }
+            self.pkt_sent += 1;
         }
-        
+
+        self.duration = init.elapsed().as_secs_f64(); 
     }
 
 
@@ -172,6 +182,17 @@ impl PacketGun {
             self.dst_ip,
             self.dst_port,
         )
+    }
+
+
+
+    fn display_exec_info(&self) {
+        println!("[%] {} packets sent in {:.2} seconds", &self.pkt_sent, self.duration);
+
+        if self.duration > 1.0 {
+            let rate = self.pkt_sent as f64 / self.duration;
+            println!("[%] {:.2} packets sent per second", rate);
+        };        
     }
 
 }

@@ -8,7 +8,11 @@
 
 - Rust (latest stable). [Official Rust installation page](https://www.rust-lang.org/tools/install)
 - Linux OS
-- Root/Administrator privileges (required for raw socket access)
+- Some system dependencies:
+
+```bash
+sudo apt install clang llvm libelf-dev
+```
 
 
 <br>

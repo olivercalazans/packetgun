@@ -17,3 +17,4 @@ libc = "0.2.177"
 rand = "0.8.5"
 clap = { version = "4.5", features = ["derive"] }
 xsk-rs = "0.8.0"
+ctrlc = "3.5.2"
