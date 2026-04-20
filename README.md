@@ -6,14 +6,13 @@
 
 ## Requirements
 
-- Rust (latest stable). [Official Rust installation page](https://www.rust-lang.org/tools/install)
-- Linux OS
-- Some system dependencies:
+- **Rust** (latest stable) – [Installation guide](https://www.rust-lang.org/tools/install)
+- **Linux** (tested on Debian 13, should work on any recent distro)
+- System dependencies:
 
-```bash
-sudo apt install clang llvm libelf-dev
-```
-
+  ```bash
+  sudo apt install clang llvm libelf-dev linux-headers-$(uname -r)
+  ```
 
 <br>
 
